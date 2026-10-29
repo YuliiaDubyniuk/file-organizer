@@ -1,7 +1,10 @@
+
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { runScan } from "./commands/scan.js";
-import { runDuplicates } from "./commands/duplicates.js";
+
+import { runScan } from "./lib/scanner.js";
+import { runDuplicates } from "./lib/duplicates.js";
+import { runOrganize } from "./lib/organizer.js";
 
 const COMMANDS = Object.freeze({
     scan: {
@@ -12,22 +15,37 @@ const COMMANDS = Object.freeze({
         description: "Find duplicate files using SHA-256",
         run: runDuplicates,
     },
-
+    organize: {
+        description: "Sort and copy files into category folders",
+        run: runOrganize,
+    },
 });
 
 function printHelp() {
-    console.log("Usage: node index.js <command> <directory>");
+    console.log("Usage: node file-organizer.js <command> [arguments]");
     console.log("\nAvailable commands:");
 
     for (const [name, command] of Object.entries(COMMANDS)) {
         console.log(`  ${name.padEnd(12)} ${command.description}`);
     }
+
+    console.log("\nExamples:");
+    console.log("  node file-organizer.js scan ./Downloads");
+    console.log("  node file-organizer.js duplicates ./Downloads");
+    console.log(
+        "  node file-organizer.js organize ./Downloads --output ./Organized",
+    );
 }
 
 async function main() {
-    const [commandName, directory] = process.argv.slice(2);
+    const args = process.argv.slice(2);
+    const [commandName] = args;
 
-    if (!commandName || commandName === "--help" || commandName === "-h") {
+    if (
+        !commandName ||
+        commandName === "--help" ||
+        commandName === "-h"
+    ) {
         printHelp();
         return;
     }
@@ -41,14 +59,48 @@ async function main() {
         return;
     }
 
-    if (!directory) {
-        console.error(`Please provide a directory for "${commandName}".`);
-        console.log(`Usage: node index.js ${commandName} <directory>`);
-        process.exitCode = 1;
-        return;
-    }
-
     try {
+        // handle the organize command separately because it accepts --output
+        if (commandName === "organize") {
+            const sourceDirectory = args[1];
+            const outputIndex = args.indexOf("--output");
+            const outputDirectory =
+                outputIndex !== -1 ? args[outputIndex + 1] : undefined;
+
+            if (
+                !sourceDirectory ||
+                sourceDirectory.startsWith("--") ||
+                !outputDirectory ||
+                outputDirectory.startsWith("--")
+            ) {
+                console.error(
+                    "Please provide a source directory and an output directory.\n",
+                );
+                console.log(
+                    "Usage: node file-organizer.js organize <source> --output <target>",
+                );
+                process.exitCode = 1;
+                return;
+            }
+
+            await command.run(sourceDirectory, outputDirectory);
+            return;
+        }
+
+        // scan and duplicates commands accept a single directory
+        const directory = args[1];
+
+        if (!directory || directory.startsWith("--")) {
+            console.error(
+                `Please provide a directory for "${commandName}".\n`,
+            );
+            console.log(
+                `Usage: node file-organizer.js ${commandName} <directory>`,
+            );
+            process.exitCode = 1;
+            return;
+        }
+
         await command.run(directory);
     } catch (error) {
         console.error(`Error: ${error.message}`);
